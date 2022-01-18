@@ -11,14 +11,18 @@ import torch.nn.functional as F
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import torchvision.models as models
+from sklearn import metrics
+from copy import copy
+from efficientnet_pytorch import EfficientNet
 
 from dataset import DogsCatsDataset
+from utils import get_predictions, save_feature_vectors
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EPOCHS = 10
 BATCH_SIZE = 32
 
-AA = A.Compose(
+base_transform = A.Compose(
     [
         A.Resize(height=448, width=448),
         A.Normalize(
@@ -44,35 +48,15 @@ class NN(nn.Module):
         x = self.linear(x)
         return torch.sigmoid(x).view(-1)
 
-model = NN()
-optimizer = optim.Adam(model.parameters(), lr=2e-3, weight_decay=1e-4)
-loss_fn = nn.BCEWithLogitsLoss()
+model = EfficientNet.from_pretrained("efficientnet-b4")
+#optimizer = optim.Adam(model.parameters(), lr=2e-3, weight_decay=1e-4)
+#loss_fn = nn.BCEWithLogitsLoss()
 
-train_loader = DataLoader(DogsCatsDataset("data/train", AA, split="train"), batch_size=BATCH_SIZE, shuffle=True)
-val_loader = DataLoader(DogsCatsDataset("data/train", AA, split="val"), batch_size=BATCH_SIZE, shuffle=True)
-#train_dataloader = DataLoader(DogsCatsDataset("data/train", AA), batch_size=BATCH_SIZE, shuffle=True)
+train_loader = DataLoader(DogsCatsDataset("data/train", base_transform, split="train"), batch_size=BATCH_SIZE, shuffle=True)
+val_loader = DataLoader(DogsCatsDataset("data/train", base_transform, split="val"), batch_size=BATCH_SIZE, shuffle=False)
+test_loader = DataLoader(DogsCatsDataset("data/train", base_transform), batch_size=BATCH_SIZE, shuffle=False)
 
-for epoch in range(EPOCHS):
-    sample = next(iter(train_loader)) # sanity check that model learns smth
-    
-
-    #probabilities, true = get_predictions(val_loader, model, DEVICE)
-    #print(f'epoch: {epoch}')
-    #print(f'val roc_auc: {metrics.roc_auc_score(true, probabilities)}')
-
-    #for batch_idx, sample in enumerate(tqdm(train_loader)):
-    data, targets = sample["image"], sample["label"]
-    targets = targets.to(DEVICE)
-    optimizer.zero_grad()
-
-    data = data.to(DEVICE)
-    model = model.to(DEVICE)
-
-    #forward
-    preds = model(data)
-
-    loss = loss_fn(preds, targets)
-    print(loss)
-
-    loss.backward()
-    optimizer.step()
+model = model.to(DEVICE)
+save_feature_vectors(model, train_loader, file = "train_b4", device = DEVICE)
+save_feature_vectors(model, val_loader, file = "val_b4", device = DEVICE)
+save_feature_vectors(model, test_loader, file = "test_b4", device = DEVICE)
